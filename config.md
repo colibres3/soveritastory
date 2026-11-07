@@ -2,3 +2,5 @@
 [icon]: <> (http://vitalik.ca/images/icon.png)
 [domain](http://localhost)
 [posts_directory](./posts)
+[server](127.0.0.1)
+[website_root](site)

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import os, sys, datetime
+import os, sys, datetime, shutil, subprocess, tempfile, re, html
 
 PRE_HEADER = """
 
@@ -207,11 +207,14 @@ def extract_metadata(fil, filename=None):
 
 
 def metadata_to_path(global_config, metadata):
-    return os.path.join(
-        global_config.get('posts_directory', 'posts'),
+    posts_dir = global_config.get('posts_directory', 'posts').strip('.').strip('/\\')
+    if not posts_dir:
+        posts_dir = 'posts'
+    return '/'.join([
+        posts_dir,
         metadata['date'],
         metadata['filename']
-    )
+    ])
 
 
 def generate_feed(global_config, metadatas):
@@ -224,9 +227,10 @@ def generate_feed(global_config, metadatas):
         return date.strftime('%a, %d %b %Y 00:00:00 +0000')
 
     def get_item(metadata):
+        posts_dir = global_config.get('posts_directory', 'posts').strip('.').strip('/\\') or 'posts'
         return RSS_ITEM_TEMPLATE.format(
             title=metadata['title'],
-            link=get_link('/'.join([global_config['posts_directory'], metadata['date'], metadata['filename']])),
+            link=get_link('/'.join([posts_dir, metadata['date'], metadata['filename']])),
             pub_date=get_date(metadata['date']), description=''
         )
 
@@ -302,20 +306,106 @@ if __name__ == '__main__':
         os.system('rsync -av site/. {}:{}'.format(global_config['server'], global_config['website_root']))
         sys.exit()
 
+def simple_markdown_to_html(md_text):
+    lines = md_text.splitlines()
+    start_idx = 0
+    for idx, l in enumerate(lines):
+        if l.startswith('[') and ']' in l and '(' in l and ')' in l:
+            start_idx = idx + 1
+        elif start_idx > 0 and l.strip() != '':
+            break
+    body_lines = lines[start_idx:]
+    html_out = []
+    in_code = False
+    code_lines = []
+    code_lang = ""
+    for l in body_lines:
+        m = re.match(r'^```(\w*)\s*$', l)
+        if m:
+            if not in_code:
+                in_code = True
+                code_lang = m.group(1)
+                code_lines = []
+            else:
+                in_code = False
+                lang_cls = f" {code_lang}" if code_lang else ""
+                html_out.append(f'<div class="sourceCode"><pre class="sourceCode{lang_cls}"><code class="sourceCode{lang_cls}">')
+                for line_idx, cl in enumerate(code_lines, 1):
+                    esc = html.escape(cl)
+                    if code_lang == 'python':
+                        esc = re.sub(r'\b(def|class|lambda|import|from|as|return|if|else|for|while)\b', r'<span class="kw">\1</span>', esc)
+                        esc = re.sub(r'\b(\d+)\b', r'<span class="dv">\1</span>', esc)
+                    html_out.append(f'<a class="sourceLine" id="cb1-{line_idx}" title="{line_idx}">{esc}</a>')
+                html_out.append('</code></pre></div>')
+            continue
+        if in_code:
+            code_lines.append(l)
+            continue
+        if not l.strip():
+            continue
+        if l.startswith('# '):
+            html_out.append(f'<h1>{html.escape(l[2:])}</h1>')
+        elif l.startswith('## '):
+            html_out.append(f'<h2>{html.escape(l[3:])}</h2>')
+        elif l.startswith('### '):
+            html_out.append(f'<h3>{html.escape(l[4:])}</h3>')
+        else:
+            esc = html.escape(l)
+            esc = re.sub(r'`([^`]+)`', r'<code>\1</code>', esc)
+            esc = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', esc)
+            esc = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', esc)
+            esc = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', esc)
+            html_out.append(f'<p>{esc}</p>')
+    return '\n'.join(html_out)
+
+
+if __name__ == '__main__':
+    # Get blog config
+    with open('config.md', encoding='utf-8') as f:
+        global_config = extract_metadata(f)
+
+    # Special case: '--sync' option
+    if '--sync' in sys.argv:
+        if shutil.which('rsync'):
+            os.system('rsync -av site/. {}:{}'.format(global_config['server'], global_config['website_root']))
+        else:
+            print("rsync is not available on this system.")
+        sys.exit()
+
     # Normal case: process each provided file
     for file_location in sys.argv[1:]:
         filename = os.path.split(file_location)[1]
         print("Processing file: {}".format(filename))
 
         # Extract path
-        file_data = open(file_location).read()
-        metadata = extract_metadata(open(file_location), filename)
+        with open(file_location, encoding='utf-8') as f:
+            file_data = f.read()
+        with open(file_location, encoding='utf-8') as f:
+            metadata = extract_metadata(f, filename)
         path = metadata_to_path(global_config, metadata)
 
         # Generate the html file
         options = metadata.get('pandoc', '')
+        html_content = None
 
-        os.system('pandoc -o /tmp/temp_output.html {} {}'.format(file_location, options))
+        if shutil.which('pandoc'):
+            with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as tf:
+                temp_output = tf.name
+            try:
+                cmd = ['pandoc', '-o', temp_output, file_location]
+                if options:
+                    cmd.extend(options.split())
+                res = subprocess.call(cmd)
+                if res == 0 and os.path.exists(temp_output):
+                    with open(temp_output, encoding='utf-8') as f:
+                        html_content = defancify(f.read())
+            finally:
+                if os.path.exists(temp_output):
+                    os.remove(temp_output)
+
+        if html_content is None:
+            html_content = simple_markdown_to_html(file_data)
+
         root_path = '../../../..'
         total_file_contents = (
             PRE_HEADER +
@@ -324,26 +414,27 @@ if __name__ == '__main__':
             TOGGLE_COLOR_SCHEME_JS +
             make_twitter_card(metadata['title'], global_config) +
             TITLE_TEMPLATE.format(metadata['title'], get_printed_date(metadata), root_path) +
-            defancify(open('/tmp/temp_output.html').read()) +
+            html_content +
             FOOTER
         )
 
         print("Path selected: {}".format(path))
 
         # Make sure target directory exists
-        truncated_path = os.path.split(path)[0]
-        os.system('mkdir -p {}'.format(os.path.join('site', truncated_path)))
+        out_location = os.path.join('site', *path.split('/'))
+        os.makedirs(os.path.dirname(out_location), exist_ok=True)
 
         # Put it in the desired location
-        out_location = os.path.join('site', path)
-        open(out_location, 'w').write(total_file_contents)
+        with open(out_location, 'w', encoding='utf-8') as f:
+            f.write(total_file_contents)
 
     # Reset ToC
     metadatas = []
     categories = set()
     for filename in os.listdir('posts'):
         if filename[-4:-1] != '.sw':
-            metadatas.append(extract_metadata(open(os.path.join('posts', filename)), filename))
+            with open(os.path.join('posts', filename), encoding='utf-8') as f:
+                metadatas.append(extract_metadata(f, filename))
             categories = categories.union(metadatas[-1]['categories'])
     categories = sorted(categories)
 
@@ -352,7 +443,7 @@ if __name__ == '__main__':
     sorted_metadatas = sorted(metadatas, key=lambda x: x['date'], reverse=True)
     feed = generate_feed(global_config, sorted_metadatas)
 
-    os.system('mkdir -p {}'.format(os.path.join('site', 'categories')))
+    os.makedirs(os.path.join('site', 'categories'), exist_ok=True)
 
     print("Building tables of contents...")
 
@@ -367,13 +458,18 @@ if __name__ == '__main__':
             category in metadata['categories']
         ]
         toc = make_toc(category_toc_items, global_config, categories, category)
-        open(os.path.join('site', 'categories', category+'.html'), 'w').write(toc)
+        with open(os.path.join('site', 'categories', category + '.html'), 'w', encoding='utf-8') as f:
+            f.write(toc)
 
-    open('site/feed.xml', 'w').write(feed)
-    open('site/index.html', 'w').write(make_toc(homepage_toc_items, global_config, categories))
+    with open('site/feed.xml', 'w', encoding='utf-8') as f:
+        f.write(feed)
+    with open('site/index.html', 'w', encoding='utf-8') as f:
+        f.write(make_toc(homepage_toc_items, global_config, categories))
 
     # Copy CSS and scripts files
-    this_file_directory = os.path.dirname(__file__)
-    os.system('cp -r {} site/'.format(os.path.join(this_file_directory, 'css')))
-    os.system('cp -r {} site/'.format(os.path.join(this_file_directory, 'scripts')))
-    os.system('rsync -av images site/')
+    this_file_directory = os.path.dirname(__file__) or '.'
+    shutil.copytree(os.path.join(this_file_directory, 'css'), 'site/css', dirs_exist_ok=True)
+    shutil.copytree(os.path.join(this_file_directory, 'scripts'), 'site/scripts', dirs_exist_ok=True)
+    if os.path.exists(os.path.join(this_file_directory, 'images')):
+        shutil.copytree(os.path.join(this_file_directory, 'images'), 'site/images', dirs_exist_ok=True)
+

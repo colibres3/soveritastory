@@ -1,4 +1,4 @@
-<?xml version="1.0" ?>
+﻿<?xml version="1.0" ?>
 <rss version="2.0">
 <channel>
   <title>Notatki z historii</title>
@@ -9,41 +9,26 @@
       <title>Notatki z historii</title>
       <link>http://localhost/</link>
   </image>
-
 <item>
-<title>Galeria</title>
-<link>http://localhost/./posts/2024/12/28/galeria .html</link>
-<guid>http://localhost/./posts/2024/12/28/galeria .html</guid>
+<title>remont</title>
+<link>http://localhost/posts/2024/12/29/remont.html</link>
+<guid>http://localhost/posts/2024/12/29/remont.html</guid>
+<pubDate>Sun, 29 Dec 2024 00:00:00 +0000</pubDate>
+<description></description>
+</item>
+<item>
+<title>zdjecia</title>
+<link>http://localhost/posts/2024/12/28/zdjecia.html</link>
+<guid>http://localhost/posts/2024/12/28/zdjecia.html</guid>
 <pubDate>Sat, 28 Dec 2024 00:00:00 +0000</pubDate>
 <description></description>
 </item>
-
-
-<item>
-<title>Spis tresci</title>
-<link>http://localhost/./posts/2024/12/28/spis tresci.html</link>
-<guid>http://localhost/./posts/2024/12/28/spis tresci.html</guid>
-<pubDate>Sat, 28 Dec 2024 00:00:00 +0000</pubDate>
-<description></description>
-</item>
-
-
 <item>
 <title>streszczenie</title>
-<link>http://localhost/./posts/2024/12/28/streszczenie.html</link>
-<guid>http://localhost/./posts/2024/12/28/streszczenie.html</guid>
+<link>http://localhost/posts/2024/12/28/streszczenie.html</link>
+<guid>http://localhost/posts/2024/12/28/streszczenie.html</guid>
 <pubDate>Sat, 28 Dec 2024 00:00:00 +0000</pubDate>
 <description></description>
 </item>
-
-
-<item>
-<title>Hello world</title>
-<link>http://localhost/./posts/2020/10/24/hello.html</link>
-<guid>http://localhost/./posts/2020/10/24/hello.html</guid>
-<pubDate>Sat, 24 Oct 2020 00:00:00 +0000</pubDate>
-<description></description>
-</item>
-
 </channel>
 </rss>
